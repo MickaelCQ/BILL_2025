@@ -1,104 +1,131 @@
-library(vcfR)  # Bibliothèque pour lire et traiter les fichiers VCF
+#01/29/25 Structuring and assembly of VCF files listing structural variants of interest
+#01/30/25 Programming a function for read and extract columns natives of the VCFs and generate a csv
+#01/30/25 Reflection and programming a function for the addition of INFO column metadata
+#01/30/25 GIT update, comment translation and test set on generation P15, P30, P50 and P65
+#01/31/25 Add a cryptic column on first index with the willingness to identify for each SV the viral generation
 
-# Fonction pour lire et extraire les données du VCF
-extraire_vcf <- function(vcf_file) {
-  vcf <- vcfR::read.vcfR(vcf_file)  # Lire le fichier VCF
+library(vcfR) # no std library R for import function for the VCF treatment
+
+################################# 
+# Generic Functions
+##################################
+
+# For read and extract data in the VCF file
+FunExtractVCF <- function(vcf_file) {
+  vcf <- vcfR::read.vcfR(vcf_file)  # Read this file
   
   # Extraire les colonnes fixes du fichier VCF (comme CHROM, POS, etc.)
-  donnees_fixes <- as.data.frame(vcf@fix)  # Extraction des informations conventionnelles du VCF sous forme de data.frame
+  nativesCol <- as.data.frame(vcf@fix)  # Extract 
   
-  ##############################################################
-  # MISE A L'ECHELLE DES METADONNEES DU CHAMPS INFO 
-  #############################################################
+  ################################# 
+  # "INFO" FIELD METADATA SCALING
+  ##################################
   
-  extraire_info <- function(info_col) {
+  FunExtractINFO <- function(info_col) {
     # Séparer les informations de chaque ligne de la colonne INFO en fonction du séparateur ";"
-    infos <- strsplit(info_col, ";")  # strsplit() est une fonction de base de R, qui divise les chaînes
+    infos <- strsplit(info_col, ";")
     
     # Identifier les noms de champs uniques dans toutes les informations de la colonne INFO
     champs_possibles <- unique(unlist(lapply(infos, function(x) {
-      # Extrait les noms des champs (avant le "=") de chaque chaîne d'information
       sapply(strsplit(x, "="), function(y) y[1])
     })))
     
     # Crée une liste où chaque élément représente une ligne de la colonne INFO avec les valeurs associées aux champs
     infos_list <- lapply(infos, function(x) {
-      # Séparer chaque information en paires clé-valeur
       pairs <- strsplit(x, "=")
       values <- sapply(pairs, function(y) ifelse(length(y) > 1, y[2], y[1]))  # Extrait la valeur ou la clé
       names(values) <- sapply(pairs, function(y) y[1])  # Associe les noms aux valeurs
-      complet <- setNames(rep(NA, length(champs_possibles)), champs_possibles)  # Initialise un vecteur avec des NA
-      complet[names(values)] <- values  # Remplir les champs avec les valeurs extraites
+      
+      # Remplir les champs manquants avec NA
+      complet <- setNames(rep(NA, length(champs_possibles)), champs_possibles)
+      complet[names(values)] <- values
       return(complet)
     })
     
     # Combine tous les éléments de la liste en un seul DataFrame
-    infos_df <- do.call(rbind, infos_list)  # Combine les listes en un data.frame
+    infos_df <- do.call(rbind, infos_list)
     infos_df <- as.data.frame(infos_df, stringsAsFactors = FALSE)  # Assure que les colonnes sont traitées comme des chaînes
     
-    # Retourner le DataFrame final avec les informations extraites
     return(infos_df)
   }
   
   # Appliquer la fonction sur la colonne INFO pour extraire les données pertinentes
-  info_colonnes <- extraire_info(donnees_fixes$INFO)
+  info_colonnes <- FunExtractINFO(nativesCol$INFO)
   
   ##################################################################################
-  #    AJOUT D'UNE COLONNE CRYPTIQUE POUR FAIRE UNE µ DES PROFONDEURS DE REPLICATS 
-  #################################################################################
-  # Calculer la moyenne du COVERAGE pour chaque variant
+  # AJOUT D'UNE COLONNE POUR LA MOYENNE DES PROFONDEURS DE RÉPLICATS (COVERAGE)
+  ##################################################################################
   calcMoyCoverage <- function(coverage) {
-    if (!is.na(coverage) && nzchar(coverage)) {  # Vérifie que la chaîne de coverage n'est pas vide ni NA
-      val_prof <- as.numeric(unlist(strsplit(coverage, ",")))  # Convertit les valeurs en numérique
+    if (!is.na(coverage) && nzchar(coverage)) {
+      val_prof <- as.numeric(unlist(strsplit(coverage, ",")))
       if (length(val_prof) > 0) {
-        return(mean(val_prof, na.rm = TRUE))  # Calcul de la moyenne, en ignorant les NA
+        return(mean(val_prof, na.rm = TRUE))
       }
     }
-    return(NA)  # Retourne NA si coverage est invalide
+    return(NA)
   }
   
-  # Ajouter la colonne MU_COVERAGE au DataFrame
-  if ("COVERAGE" %in% names(info_colonnes)) {  # Vérifie si la colonne COVERAGE existe dans info_colonnes
-    info_colonnes$MU_COVERAGE <- sapply(info_colonnes$COVERAGE, calcMoyCoverage)  # Applique la fonction à chaque valeur de COVERAGE
+  if ("COVERAGE" %in% names(info_colonnes)) {
+    info_colonnes$MU_COVERAGE <- sapply(info_colonnes$COVERAGE, calcMoyCoverage)
   } else {
-    # Si COVERAGE n'existe pas, créer une colonne MU_COVERAGE vide
     info_colonnes$MU_COVERAGE <- NA
   }
   
-  # Réorganiser les colonnes pour que MU_COVERAGE soit à côté de COVERAGE
   colonnes_reorganisees <- c(
-    setdiff(names(info_colonnes), c("COVERAGE", "MU_COVERAGE")),  # Inclure toutes les autres colonnes sauf COVERAGE et MU_COVERAGE
-    "COVERAGE", 
+    setdiff(names(info_colonnes), c("COVERAGE", "MU_COVERAGE")),
+    "COVERAGE",
     "MU_COVERAGE"
   )
-  info_colonnes <- info_colonnes[, colonnes_reorganisees]  # Réarranger les colonnes
+  info_colonnes <- info_colonnes[, colonnes_reorganisees, drop = FALSE]  # Évite les erreurs si colonnes manquent
   
   ##################################################################################
-  #                               COSMETIQUE DU CSV    
+  # COSMÉTIQUE DU CSV
   ##################################################################################
-  # Fusionner les colonnes fixes et celles extraites
   donnees_finales <- cbind(
-    donnees_fixes[, c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER")],  # Colonnes fixes du VCF
-    info_colonnes)  # Colonnes extraites de la colonne INFO
+    nativesCol[, c("CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER")],
+    info_colonnes
+  )
+  
+  # Extraire la génération du nom du fichier
+  generation <- gsub("^P([0-9]+)-.*$", "P\\1", basename(vcf_file))
+  donnees_finales$GENERATION <- generation
   
   return(donnees_finales)
 }
 
 ##################################################################################
-#                   TRAITEMENT DE PLUSIEURS FICHIERS VCF A LA FOIS 
+# TRAITEMENT DE PLUSIEURS FICHIERS VCF AVEC CHAMPS VARIABLES DANS INFO
 ##################################################################################
-# Liste des fichiers VCF dans le répertoire du projet
-#vcf_files <- list.files(path = "/home/mickael/Projets_GIT/BILL_2025/", pattern = "*.vcf", full.names = TRUE)
-vcf_files <- list.files(path = "~/Téléchargements/", pattern = "*.vcf", full.names = TRUE) # Tests
-toutes_les_donnees <- data.frame()
+vcf_files <- list.files(path = "/home/mickael/Projets_GIT/BILL_2025/VCF/", pattern = "*.vcf", full.names = TRUE)
+toutes_les_donnees <- NULL  # Initialiser comme NULL pour éviter les conflits
 
 for (vcf_file in vcf_files) {
-  # Traiter chaque fichier VCF et récupérer les données
-  donnees_vcf <- extraire_vcf(vcf_file)
-  toutes_les_donnees <- rbind(toutes_les_donnees, donnees_vcf)
+  donnees_vcf <- FunExtractVCF(vcf_file)  # Extraire les données du fichier VCF
+  
+  if (is.null(toutes_les_donnees)) {
+    # Si c'est le premier fichier traité, initialiser avec ses données
+    toutes_les_donnees <- donnees_vcf
+  } else {
+    # Trouver toutes les colonnes existantes entre les données accumulées et les nouvelles données
+    colonnes_toutes <- unique(c(names(toutes_les_donnees), names(donnees_vcf)))
+    
+    # Ajouter des colonnes manquantes à toutes_les_donnees
+    for (col in setdiff(colonnes_toutes, names(toutes_les_donnees))) {
+      toutes_les_donnees[[col]] <- NA
+    }
+    
+    # Ajouter des colonnes manquantes à donnees_vcf
+    for (col in setdiff(colonnes_toutes, names(donnees_vcf))) {
+      donnees_vcf[[col]] <- NA
+    }
+    
+    # Réordonner les colonnes et fusionner
+    toutes_les_donnees <- rbind(
+      toutes_les_donnees[, colonnes_toutes, drop = FALSE],
+      donnees_vcf[, colonnes_toutes, drop = FALSE]
+    )
+  }
 }
 
 # Exporter les données dans un fichier CSV
-#write.csv(toutes_les_donnees, "~/Téléchargements/Test.csv", row.names = FALSE)
-write.csv(toutes_les_donnees, "/home/mickael/Projets_GIT/BILL_2025/Traitement_P90_VCF.csv", row.names = FALSE)
-          
+write.csv(toutes_les_donnees, "/home/mickael/Projets_GIT/BILL_2025/Traitement_VCF.csv", row.names = FALSE)
