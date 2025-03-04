@@ -11,10 +11,10 @@ data$AF <- as.numeric(data$AF)
 data$FILTER <- as.factor(data$FILTER)
 data$ID <- as.factor(data$ID)
 data$WEEK <- as.factor(data$WEEK)
-
+data$POS <- as.numeric(data$POS)
 # Appliquer les filtres sur les données , variables pour générer les différents graphes intéractifs
 filtered_data <- data %>%
-  filter(MU_COVERAGE > 100, AF > 0.25, FILTER == "PASS" )
+  filter(MU_COVERAGE > 1000, AF > 0.25, FILTER == "PASS" )
 
 # Ajout du graph avec l'échelle de couleur, 
 plot_3D <- plot_ly(filtered_data, 
@@ -33,7 +33,9 @@ plot_3D <- plot_ly(filtered_data,
                                  "<br>AF: ", AF, 
                                  "<br>FILTER: ", FILTER,
                                  "<br>VARIANT: ", ID,
-                                 "<br>GENERATION:", WEEK),  
+                                 "<br>GENERATION:", WEEK,
+                                 "<br>POSITION",POS),
+                   
                    hoverinfo = "text") %>%
   layout(title = paste("Critère : FILTER = PASS"),
          scene = list(

@@ -1,6 +1,7 @@
+library(plotly) 
 library(ggplot2)
 library(dplyr)
-library(plotly) 
+
 
 data <- Traitement_VCF_2025.02.08  
 data$MU_COVERAGE <- as.numeric(data$MU_COVERAGE)
@@ -9,9 +10,11 @@ data$FILTER <- as.factor(data$FILTER)
 data$ID <- as.factor(data$ID)
 data$WEEK <- as.factor(data$WEEK)
 data$SUPPORT <- as.numeric(data$SUPPORT)
+data$GROUP <- as.factor(data$GROUP)
+data$QUAL <- as.numeric(data$QUAL)
 
 filtered_data <- data %>%
-  filter(MU_COVERAGE > 200, SUPPORT > 200, AF > 0.25, FILTER == "PASS")
+  filter(MU_COVERAGE > 200, SUPPORT > 200, AF > 0.25,  FILTER == "PASS")
 
 plot_3D <- plot_ly(filtered_data, 
                    x = ~MU_COVERAGE, 
@@ -23,7 +26,7 @@ plot_3D <- plot_ly(filtered_data,
                                  color = ~AF, 
                                  colorscale = "Viridis", 
                                  opacity = 0.7,
-                                 colorbar = list(title = "AF > 25")  # Ajout de l'échelle
+                                 colorbar = list(title = "AF > 0.25")  # Ajout de l'échelle
                    ),
                    text = ~paste("<br>PROFONDEUR : ", MU_COVERAGE, 
                                  "<br>AF: ", AF, 
@@ -31,11 +34,14 @@ plot_3D <- plot_ly(filtered_data,
                                  "<br>VARIANT: ", ID,
                                  "<br>GENERATION:", WEEK),  
                    hoverinfo = "text") %>%
-  layout(title = paste("Critère : FILTER = PASS, Nombre de lignes : ", nrow(filtered_data)),
+  layout(title = paste("Nombre de variations structurales : ", nrow(filtered_data)),
          scene = list(
-           xaxis = list(title = "Profondeur > 200", type = "log"),  
-           yaxis = list(title = "Fréquence allélique > 0.25"),
-           zaxis = list(title = "Filtre = 'PASS' ")
+           xaxis = list(title = "Profondeur", type = "log"),  
+           yaxis = list(title = "Fréquence allélique "),
+           zaxis = list(title = "FILTER = 'PASS' ")
          ))
 
 plot_3D
+
+
+
